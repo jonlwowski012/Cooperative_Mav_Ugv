@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+
+<launch>
+ 
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+     <arg name="world_name" value="$(find cooperative_obstacle_avoidance)/worlds/empty_world.world"/>
+  </include>
+
+  <arg name="model" default="$(find hector_quadrotor_description)/urdf/quadrotor.gazebo.xacro" />
+
+   <!-- workaround https://github.com/ros-simulation/gazebo_ros_pkgs/pull/134 -->
+   <!-- <param name="robot_description" command="$(find xacro)/xacro.py '$(arg model)'" /> -->
+
+   <group ns="p3dx">
+     <include file="$(find gazebo_plugins)/test/multi_robot_scenario/launch/pioneer3dx.gazebo.launch"/>
+       <arg name="robot_name" value="p3dx" />
+   </group>
+
+   <group ns="uav">
+     <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_downward_cam.launch">
+       <arg name="name" value="uav" />
+       <arg name="tf_prefix" value="uav" />
+       <arg name="x" value="0.65" />
+       <arg name="y" value="1.0" />
+       <arg name="z" value="0.01" />
+     </include>
+   </group>
+
+
+</launch>

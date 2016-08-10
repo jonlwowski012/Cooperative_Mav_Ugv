@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="rosbag" type="play" name="rosbag" args="$(find cooperative_obstacle_avoidance)/bagfiles/test.bag"/>
+  <node name="extract" pkg="image_view" type="extract_images" respawn="false" output="screen" cwd="ROS_HOME">
+    <remap from="image" to="/ardrone/image_raw"/>
+  </node>
+</launch>

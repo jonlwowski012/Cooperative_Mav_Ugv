@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+
+<launch>
+ 
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+     <arg name="world_name" value="$(find cooperative_obstacle_avoidance)/worlds/canopy_world.world"/>
+  </include>
+
+  <arg name="model" default="$(find hector_quadrotor_description)/urdf/quadrotor.gazebo.xacro" />
+  <arg name="marker_size_door" value="65" />
+  <arg name="marker_size_quad" value="10" />
+  <arg name="max_new_marker_error" value=".1" />
+  <arg name="max_track_error" value="1.0" />
+  <arg name="cam_image_topic" value="/p3dx/front_camera/image_raw" />
+  <arg name="cam_info_topic" value="/p3dx/front_camera/camera_info" />	
+  <arg name="output_frame" value="p3dx/front_camera" />
+  
+   <!-- workaround https://github.com/ros-simulation/gazebo_ros_pkgs/pull/134 -->
+   <!-- <param name="robot_description" command="$(find xacro)/xacro.py '$(arg model)'" /> -->
+
+
+
+	<node name="ar_track_alvar_Door" pkg="ar_track_alvar" type="individualMarkersNoKinect_Door" respawn="false" output="screen" args="$(arg marker_size_door) $(arg max_new_marker_error) $(arg max_track_error) $(arg cam_image_topic) $(arg cam_info_topic) $(arg output_frame)" />
+    <node name="ar_track_alvar_Quad" pkg="ar_track_alvar" type="individualMarkersNoKinect_Quad" respawn="false" output="screen" args="$(arg marker_size_quad) $(arg max_new_marker_error) $(arg max_track_error) $(arg cam_image_topic) $(arg cam_info_topic) $(arg output_frame)" /> 
+
+   <group ns="p3dx">
+     <include file="$(find gazebo_plugins)/test/multi_robot_scenario/launch/pioneer3dx.gazebo.launch"/>
+       <arg name="robot_name" value="p3dx" />
+   </group>
+
+   <group ns="uav">
+     <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_downward_cam.launch">
+       <arg name="name" value="uav" />
+       <arg name="tf_prefix" value="uav" />
+       <arg name="x" value="-4.00" />
+       <arg name="y" value="1.0" />
+       <arg name="z" value="0.01" />
+     </include>
+   </group>
+
+
+</launch>

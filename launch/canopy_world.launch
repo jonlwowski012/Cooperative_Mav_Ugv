@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+
+<launch>
+ 
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+     <arg name="world_name" value="$(find cooperative_obstacle_avoidance)/worlds/canopy_world2.world"/>
+  </include>
+
+   <group ns="p3dx">
+     <include file="$(find gazebo_plugins)/test/multi_robot_scenario/launch/pioneer3dx.gazebo.launch"/>
+       <arg name="robot_name" value="p3dx" />
+   </group>
+
+   <group ns="uav">
+     <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_downward_cam.launch">
+       <arg name="name" value="uav" />
+       <arg name="tf_prefix" value="uav" />
+       <arg name="x" value="-4.00" />
+       <arg name="y" value="1.0" />
+       <arg name="z" value="0.01" />
+     </include>
+   </group>
+
+</launch>

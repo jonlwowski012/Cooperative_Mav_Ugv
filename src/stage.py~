@@ -1,0 +1,372 @@
+#!/usr/bin/env python
+
+# Quadrotor Simulator
+# Jonathan Lwowski and Yonggun Lee
+# Email: jonathan.lwowski@gmail.com yonggun.lee@utsa.edu
+# Unmanned Systems Lab
+# The University of Texas at San Antonio
+
+import cv2
+import cv
+import sys
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+import rospy
+from std_msgs.msg import Empty
+from geometry_msgs.msg import Twist 
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Range
+from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import Vector3Stamped
+import math
+import numpy as np
+
+
+
+
+quad1pos = 0
+quad1imu = 0
+quad1sonar = 0
+quad1pressure = 0
+quad1magnetic = 0
+quad1altimeter = 0
+quad1imu_orientation_x=0
+quad1imu_orientation_y=0
+quad1imu_orientation_z=0
+quad1imu_orientation_w=0
+bearing=0
+phi=0
+theta=0
+psi=0
+nxc=0
+nyc=0
+
+
+class uav_image:
+
+  def __init__(self):
+    self.image_pub = rospy.Publisher("/image",Image)
+
+    cv2.namedWindow("Image window", 1)
+    self.bridge = CvBridge()
+    self.image_sub = rospy.Subscriber("/uav/downward_cam/camera/image",Image,self.callback)
+
+  def callback(self,data):
+    try:
+      cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+    except CvBridgeError, e:
+      print e
+
+    (rows,cols,channels) = cv_image.shape
+    if cols > 60 and rows > 60 :
+      cv2.circle(cv_image, (50,50), 10, 255)
+    ### Start of Image Processing ######
+
+    hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+    lower_red = np.array([0,100,100])
+    upper_red = np.array([10,255,255])
+    mask = cv2.inRange(hsv, lower_red, upper_red)
+    mat=cv.GetMat(cv.fromarray(mask))
+    moments=cv.Moments(mat)
+    if((moments.m01>(-10000000000000)) and (moments.m01<10000000000000) and (moments.m00>(-1000000000000)) and (moments.m00<10000000000000) and (moments.m10>(-1000000000000)) and (moments.m10<10000000000000)):
+        yc= moments.m01/moments.m00
+        xc=moments.m10/moments.m00
+        global ncx
+        global nyc
+        nxc=xc-640
+        nyc=yc-283
+	focal=1690.0#1097.51
+	q= nxc/focal
+	global bearing
+	bearing=math.atan(q)*((180.0)/(3.14159))
+        cv2.circle(cv_image,(int(xc),int(yc)),10,(0,0,255),-1)
+        #cv2.imshow('Thresholded', mask)
+
+    ### End of Image Processing ######
+    cv2.imshow('UAV Image', cv_image)
+    cv2.waitKey(3)
+
+    try:
+      cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+      
+    except CvBridgeError, e:
+      print e
+
+class ugv_image:
+
+  def __init__(self):
+    self.image_pub = rospy.Publisher("/image",Image)
+
+    cv2.namedWindow("Image window", 1)
+    self.bridge = CvBridge()
+    self.image_sub = rospy.Subscriber("/p3dx/front_camera/image_raw",Image,self.callback)
+
+  def callback(self,data):
+    try:
+      cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+    except CvBridgeError, e:
+      print e
+
+    (rows,cols,channels) = cv_image.shape
+    if cols > 60 and rows > 60 :
+      cv2.circle(cv_image, (50,50), 10, 255)
+    ### Start of Image Processing ######
+    
+    
+    #cv2.imshow('Thresholded', mask)
+
+
+    ### End of Image Processing ######
+    cv2.imshow('UGV Image', cv_image)
+    cv2.waitKey(3)
+
+    try:
+      cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+      
+    except CvBridgeError, e:
+      print e
+
+def callback5(data):
+    global quad1imu
+    global quad1imu_orientation_x
+    global quad1imu_orientation_y
+    global quad1imu_orientation_z
+    global quad1imu_orientation_w
+    quad1imu = data
+    quad1imu_orientation_x=data.orientation.x
+    quad1imu_orientation_y=data.orientation.y
+    quad1imu_orientation_z=data.orientation.z
+    quad1imu_orientation_w=data.orientation.w
+    
+ 
+def callback12(data):
+    global quad1sonar
+    quad1sonar = data
+
+
+def callback16(data):
+    global quad1pressure
+    quad1pressure = data
+
+
+def callback20(data):
+    global quad1magnetic
+    quad1magnetic = data
+
+    
+   
+
+def imuquad1():
+    rospy.Subscriber("/uav/raw_imu", Imu, callback5)  
+
+
+
+
+
+def sonarquad1():
+    rospy.Subscriber("/uav/sonar_height", Range, callback12) 
+
+
+
+def pressurequad1():
+    rospy.Subscriber("/uav/pressure_height", PointStamped, callback16)
+
+
+
+def magneticquad1():
+    rospy.Subscriber("/uav/magnetic", Vector3Stamped, callback20)
+
+def QuaterniontoEuler():
+    e1=quad1imu_orientation_x
+    e2=quad1imu_orientation_y
+    e0=quad1imu_orientation_z
+    e3=quad1imu_orientation_w
+    
+    #Pitch
+    theta= math.atan2(2*(e0*e1+e2*e3),(e0**2+e3**2-e1**2-e2**2))
+    #Roll
+    phi= math.asin(2*(e0*e2-e1*e3))
+    #Heading
+    psi = math.atan2(2*(e0*e3+e1*e2),(e0**2+e1**2-e2**2-e3**2))
+
+    global phi
+    phi=phi*180/math.pi
+    global theta
+    theta=theta*180/math.pi
+    global psi
+    psi=psi*180/math.pi
+
+
+
+
+def takeoff(time):
+    pub1 = rospy.Publisher('/uav/cmd_vel', Twist)
+    
+
+    rospy.init_node('takeoff', anonymous=True)
+    r = rospy.Rate(10) # 10hz
+    command = Twist()
+    command.linear.x = 0.00
+    command.linear.y = 0.00
+    command.linear.z = 1.00
+    command.angular.x = 0.00
+    command.angular.y = 0.00
+    command.angular.z = 0.00
+    x = 0
+    for x in range(0, time):
+        pub1.publish(command)      
+
+
+
+def hover(time):
+
+    pub1 = rospy.Publisher('/uav/cmd_vel', Twist)
+    
+    
+
+    rospy.init_node('takeoff', anonymous=True)
+    r = rospy.Rate(10) # 10hz
+    command = Twist()
+    command.linear.x = 0.00
+    command.linear.y = 0.00
+    command.linear.z = 0.00
+    command.angular.x = 0.00
+    command.angular.y = 0.00
+    command.angular.z = 0.00
+    x = 0
+    for x in range(0, time):
+	
+        #str = "hello world %s"%rospy.get_time()
+        #rospy.loginfo(str)
+        pub1.publish(command)
+    QuaterniontoEuler()
+       
+       
+
+        #r.sleep()
+
+
+def land(time):
+    pub1 = rospy.Publisher('/uav/cmd_vel', Twist)
+   
+ 
+    
+    rospy.init_node('takeoff', anonymous=True)
+    r = rospy.Rate(10) # 10hz
+    command = Twist()
+    command.linear.x = 0.00
+    command.linear.y = 0.00
+    command.linear.z = -1.00
+    command.angular.x = 0.00
+    command.angular.y = 0.00
+    command.angular.z = 0.00
+    x = 0
+    for x in range(0, time):
+        pub1.publish(command)
+     
+  
+  
+
+
+def set_velocity_uav(lx1, ly1, lz1, ax1, ay1, az1):   
+    pub1 = rospy.Publisher('/uav/cmd_vel', Twist)
+
+
+   
+    rospy.init_node('takeoff', anonymous=True)
+    r = rospy.Rate(10) # 10hz
+    command1 = Twist()
+    command1.linear.x = lx1
+    command1.linear.y = ly1
+    command1.linear.z = lz1
+    command1.angular.x = ax1
+    command1.angular.y = ay1
+    command1.angular.z = az1
+    hover = Twist()
+    hover.linear.x = 0.0
+    hover.linear.y = 0.0
+    hover.linear.z = 0.0
+    hover.angular.x = 0.0
+    hover.angular.y = 0.0
+    hover.angular.z = 0.0
+    pub1.publish(command1)
+QuaterniontoEuler()
+  
+
+def set_velocity_ugv(time, lx1, ly1, lz1, ax1, ay1, az1):   
+    pub1 = rospy.Publisher('/p3dx/cmd_vel', Twist)
+
+
+   
+    rospy.init_node('takeoff', anonymous=True)
+    r = rospy.Rate(10) # 10hz
+    command1 = Twist()
+    command1.linear.x = lx1
+    command1.linear.y = ly1
+    command1.linear.z = lz1
+    command1.angular.x = ax1
+    command1.angular.y = ay1
+    command1.angular.z = az1
+    hover = Twist()
+    hover.linear.x = 0.0
+    hover.linear.y = 0.0
+    hover.linear.z = 0.0
+    hover.angular.x = 0.0
+    hover.angular.y = 0.0
+    hover.angular.z = 0.0
+    q=0
+    for q in range(0, time):
+	pub1.publish(command1)
+	QuaterniontoEuler()
+  
+    pub1.publish(hover)
+
+
+		
+
+		
+def track_ugv(time):   
+    for q in range(0, time):
+    	if(nxc>-10000000 and nxc<1000000):
+    		roll=((0)*nxc)
+    		if(roll>1.0):
+    			roll=1.0
+		elif(roll<-1.0):
+			roll=-1.0
+        if(nyc>-10000000 and nyc<1000000):
+    		pitch=((-.002)*nyc)
+    		if(pitch>1.0):
+    			pitch=1.0
+		elif(pitch<-1.0):
+			pitch=-1.0
+	set_velocity_uav(pitch, roll, 0, 0, 0, 0)
+           
+  
+
+
+       
+
+        
+if __name__ == '__main__':
+    ugv_image()
+    uav_image()
+    f = open('workfile.txt', 'w')
+    try:
+    	QuaterniontoEuler()
+	imuquad1()
+	sonarquad1()
+	pressurequad1()
+	magneticquad1()
+	takeoff(50000)
+	hover(100000)
+        track_ugv(100000)
+	hover(100000)
+	land(50000)
+	f.close()
+	#QuaterniontoEuler()
+	
+	
+	
+    except rospy.ROSInterruptException: pass

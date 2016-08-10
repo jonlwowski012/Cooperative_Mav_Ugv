@@ -1,0 +1,757 @@
+#!/usr/bin/env python
+
+# Quadrotor Simulator
+# Jonathan Lwowski 
+# Email: jonathan.lwowski@gmail.com
+# Unmanned Systems Lab
+# The University of Texas at San Antonio
+
+
+#########          Libraries         ###################
+import cv2
+import cv
+import sys
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+import rospy
+from std_msgs.msg import Empty
+from geometry_msgs.msg import Twist 
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Range
+from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import Vector3Stamped
+import math
+import numpy as np
+import time
+from gazebo_msgs.srv import SpawnModel
+from gazebo_msgs.srv import DeleteModel
+from geometry_msgs.msg import Pose
+import random
+
+
+###### Global Variables   #####################
+quad1pos = 0
+quad1imu = 0
+quad1sonar = 0
+quad1pressure = 0
+quad1magnetic = 0
+quad1altimeter = 0
+quad1imu_orientation_x=0
+quad1imu_orientation_y=0
+quad1imu_orientation_z=0
+quad1imu_orientation_w=0
+bearing_blue=0
+bearing_green=0
+bearing_pink=0
+phi=0
+theta=0
+psi=0
+nxc_blue=0
+nyc_blue=0
+nxc_pink=0
+nyc_pink=0
+nxc_green=0
+nyc_green=0
+ugv_yaw=0
+ugv_orientation_x=0
+ugv_orientation_y=0
+ugv_orientation_z=0
+ugv_orientation_w=0
+ugv_pose_x=0
+ugv_pose_y=0
+detected = 0
+direction = 0
+bearing_edge_blue_left = 0
+bearing_edge_blue_right = 0
+bearing_edge_pink_left = 0
+bearing_edge_pink_right = 0
+bearing_edge_green_left = 0
+bearing_edge_green_right = 0
+
+class ugv_image_pink:
+	def __init__(self):
+		self.image_pub = rospy.Publisher("/image",Image)
+		self.bridge = CvBridge()
+		self.image_sub = rospy.Subscriber("/p3dx/front_camera/image_raw",Image,self.callback, queue_size=1)
+	
+	def callback(self,data):
+		try:
+			cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+		except CvBridgeError, e:
+			print e
+        ### Start of Image Processing ######
+		hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+		lower_pink = np.array([143,0,0])
+		upper_pink = np.array([162,255,255])
+		mask = cv2.inRange(hsv, lower_pink, upper_pink)
+		mat=cv.GetMat(cv.fromarray(mask))
+		moments=cv.Moments(mat)
+		if((moments.m01>(-10000000000000)) and (moments.m01<10000000000000) and (moments.m00>(-1000000000000)) and (moments.m00<10000000000000) and (moments.m10>(-1000000000000)) and (moments.m10<10000000000000)):
+			global detected
+			mean = mask.mean()
+			if(mean > 0.5 and detected == 0):
+				detected = 3
+			if(mean < 0.5 and detected == 3):
+				detected = 0
+			yc= moments.m01/moments.m00
+			xc=moments.m10/moments.m00
+			global nxc_pink
+			global nyc_pink
+			nxc_pink=xc-320
+			nyc_pink=yc-180
+			contours, hierarchy = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+			cnt = contours[0]
+
+			leftmost = tuple(cnt[cnt[:,:,0].argmin()][0])
+			rightmost = tuple(cnt[cnt[:,:,0].argmax()][0])
+			edge_left_x = leftmost[0]-320
+			edge_left_y = leftmost[1]-180
+			edge_right_x = rightmost[0]-320
+			edge_right_y = rightmost[1]-180
+
+			focal=1097.51
+			q= nxc_pink/focal
+			qr=  edge_right_x/focal
+			ql=  edge_left_x/focal
+			global bearing_pink
+			global bearing_edge_pink_right
+			global bearing_edge_pink_left
+			bearing_pink=math.atan(q)*((180.0)/(3.14159))
+			bearing_edge_pink_left=math.atan(ql)*((180.0)/(3.14159))
+			bearing_edge_pink_right=math.atan(qr)*((180.0)/(3.14159))
+			cv2.waitKey(1)
+			try:
+				cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+			except CvBridgeError, e:
+				print e
+					
+class ugv_image_blue:
+	def __init__(self):
+		self.image_pub = rospy.Publisher("/image",Image)
+		self.bridge = CvBridge()
+		self.image_sub = rospy.Subscriber("/p3dx/front_camera/image_raw",Image,self.callback, queue_size=5)
+	def callback(self,data):
+		try:
+			cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+		except CvBridgeError, e:
+			print e
+			### Start of Image Processing ######
+		hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+		lower_blue = np.array([110,50,50])
+		upper_blue = np.array([130,255,255])
+		mask = cv2.inRange(hsv, lower_blue, upper_blue)
+		mat=cv.GetMat(cv.fromarray(mask))
+		moments=cv.Moments(mat)
+		if((moments.m01>(-10000000000000)) and (moments.m01<10000000000000) and (moments.m00>(-1000000000000)) and (moments.m00<10000000000000) and (moments.m10>(-1000000000000)) and (moments.m10<10000000000000)):
+			global detected
+			mean = mask.mean()
+			if(mean > 0.5):
+				detected = 1
+			if(mean < 0.5 and detected == 1):
+				detected = 0
+			yc= moments.m01/moments.m00
+			xc=moments.m10/moments.m00
+			global nxc_blue
+			global nyc_blue
+			nxc_blue=xc-320
+			nyc_blue=yc-180
+			contours, hierarchy = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+			cnt = contours[0]
+			leftmost = tuple(cnt[cnt[:,:,0].argmin()][0])
+			rightmost = tuple(cnt[cnt[:,:,0].argmax()][0])
+			edge_left_x = leftmost[0]-320
+			edge_left_y = leftmost[1]-180
+			edge_right_x = rightmost[0]-320
+			edge_right_y = rightmost[1]-180
+			focal=1097.51
+			q= nxc_blue/focal
+			qr=  edge_right_x/focal
+			ql=  edge_left_x/focal
+			global bearing_blue
+			global bearing_edge_blue_right
+			global bearing_edge_blue_left
+			bearing_blue=math.atan(q)*((180.0)/(3.14159))
+			bearing_edge_blue_left=math.atan(ql)*((180.0)/(3.14159))
+			bearing_edge_blue_right=math.atan(qr)*((180.0)/(3.14159))
+			cv2.circle(cv_image,(int(xc),int(yc)),10,(0,0,255),-1)        
+
+			### End of Image Processing ######
+		cv2.imshow('UAV Image Blue', cv_image)
+		cv2.waitKey(1)
+
+		try:
+		   cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+		except CvBridgeError, e:
+		   print e
+
+class ugv_image_green:
+
+	def __init__(self):
+		self.image_pub = rospy.Publisher("/image",Image)
+
+		self.bridge = CvBridge()
+		self.image_sub = rospy.Subscriber("/p3dx/front_camera/image_raw",Image,self.callback,  queue_size=1)
+
+	def callback(self,data):
+		try:
+			cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+		except CvBridgeError, e:
+			print e
+
+    ### Start of Image Processing ######
+
+		hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+		lower_green = np.array([50, 50, 50])
+		upper_green = np.array([70, 255, 255])
+		mask = cv2.inRange(hsv, lower_green, upper_green)
+		mat=cv.GetMat(cv.fromarray(mask))
+		moments=cv.Moments(mat)
+		if((moments.m01>(-10000000000000)) and (moments.m01<10000000000000) and (moments.m00>(-1000000000000)) and (moments.m00<10000000000000) and (moments.m10>(-1000000000000)) and (moments.m10<10000000000000)):
+			global detected
+			mean = mask.mean()
+			if(mean > 0.5 and (detected == 0 or detected == 3)):
+				detected = 2
+			if(mean < 0.5 and detected == 2):
+				detected = 0
+			yc= moments.m01/moments.m00
+			xc=moments.m10/moments.m00
+			global nxc_green
+			global nyc_green
+			nxc_green=xc-360
+			nyc_green=yc-180
+
+			contours, hierarchy = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_NONE)
+			cnt = contours[0]
+
+			leftmost = tuple(cnt[cnt[:,:,0].argmin()][0])
+			rightmost = tuple(cnt[cnt[:,:,0].argmax()][0])
+
+			edge_left_x = leftmost[0]-320
+			edge_left_y = leftmost[1]-180
+			edge_right_x = rightmost[0]-320
+			edge_right_y = rightmost[1]-180
+
+
+			focal=1690.0#1097.51
+			q= nxc_green/focal
+			qr=  edge_right_x/focal
+			ql=  edge_left_x/focal
+			global bearing_green
+			global bearing_edge_green_right
+			global bearing_edge_green_left
+			bearing_green=math.atan(q)*((180.0)/(3.14159))
+			bearing_edge_green_left=math.atan(ql)*((180.0)/(3.14159))
+			bearing_edge_green_right=math.atan(qr)*((180.0)/(3.14159))
+
+
+			### End of Image Processing ######
+			#cv2.imshow('UAV Image green', cv_image)
+			cv2.waitKey(1)
+
+		try:
+			cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+		except CvBridgeError, e:
+			print e
+
+def callback21(data):
+    global ugv_orientation_x
+    global ugv_orientation_y
+    global ugv_orientation_z
+    global ugv_orientation_w
+    global ugv_pose_x
+    global ugv_pose_y
+    ugv_pose_x = data.pose.pose.position.x
+    ugv_pose_y = data.pose.pose.position.y
+    ugv_orientation_x=data.pose.pose.orientation.x
+    ugv_orientation_y=data.pose.pose.orientation.y
+    ugv_orientation_z=data.pose.pose.orientation.z
+    ugv_orientation_w=data.pose.pose.orientation.w
+    e1=ugv_orientation_x
+    e2=ugv_orientation_y
+    e0=ugv_orientation_z
+    e3=ugv_orientation_w
+    #Heading
+    global ugv_yaw
+    ugv_yaw = math.atan2(2*(e0*e3+e1*e2),(e0**2+e1**2-e2**2-e3**2))
+    ugv_yaw=ugv_yaw*180/math.pi
+
+
+
+def ugvnav():
+    rospy.Subscriber("/p3dx/odom", Odometry, callback21)    
+   
+  
+
+def set_velocity_ugv(lx1, ly1, lz1, ax1, ay1, az1):   
+    pub1 = rospy.Publisher('/p3dx/cmd_vel', Twist)
+    rospy.init_node('takeoff', anonymous=True)
+    r = rospy.Rate(10) # 10hz
+    command1 = Twist()
+    command1.linear.x = lx1
+    command1.linear.y = ly1
+    command1.linear.z = lz1
+    command1.angular.x = ax1
+    command1.angular.y = ay1
+    command1.angular.z = az1
+    pub1.publish(command1)
+    
+
+def stop(time):
+
+    pub1 = rospy.Publisher('/p3dx/cmd_vel', Twist)
+    
+    
+
+    rospy.init_node('takeoff', anonymous=True)
+    r = rospy.Rate(10) # 10hz
+    command = Twist()
+    command.linear.x = 0.00
+    command.linear.y = 0.00
+    command.linear.z = 0.00
+    command.angular.x = 0.00
+    command.angular.y = 0.00
+    command.angular.z = 0.00
+    x = 0
+    for x in range(0, time):
+    
+        #str = "hello world %s"%rospy.get_time()
+        #rospy.loginfo(str)
+        pub1.publish(command)
+    
+
+def bearingangleavoidance_blue():
+    while(detected == 1):
+        #########    Bearing Angle Avoidance with Range   #########################
+        dist = get_numbers_from_file()
+        p = float(dist[0])*.01                  # Range to Obstacle
+        V = .5                              # Linear Velocity of UGV
+        g = 1                              # Gravity Constant
+        k1 = 1                               # gain constant
+        k2 = .005
+        n = bearing_blue                    # bearing to center of obstacle
+        n_d = direction * math.radians(15)  # Desired Bearing Angle 
+
+        if(n > 0):
+            n_hat = bearing_edge_blue_left  # bearing to left edge of obstacle
+        else:
+            n_hat = bearing_edge_blue_right # bearing to right edge of obstacle
+
+        p_hat = p*math.cos(n-n_hat)         # distance to edge of obstacle
+        u_psi = ((((math.pow(V,2)*k1)/(g*p_hat))*math.sin(n_hat))+(((V*k2)/g)*(n_hat-n_d)))
+        set_velocity_ugv(.3,0,0,0,0,-u_psi)
+        print u_psi
+
+
+        #########        Bearing Angle Avoidance No Range     ######################
+        # V=.3;
+        # rho_tilde_min = 5
+        # B0 = 0.05
+        # epsilon = .1
+        # eta_d1 = math.radians(25)
+        # eta_d2 = direction * abs(eta_d1)
+        # u_psi = (abs(V*math.sin(bearing_blue*(3.14159/180)))/rho_tilde_min+B0)*satSgn((bearing_blue*(3.14159/180)-eta_d2)/epsilon)
+            
+
+       
+def bearingangleavoidance_pink():
+    while(detected == 3):
+        #########    Bearing Angle Avoidance with Range   #########################
+        dist = get_numbers_from_file()
+        p = float(dist[2])*.05                  # Range to Obstacle
+        V = .3                              # Linear Velocity of UGV
+        g = 1                               # Gravity Constant
+        k1 = 1   
+        k2 = .03                              # gain constant
+        n = bearing_pink                    # bearing to center of obstacle
+        n_d = direction * math.radians(15)  # Desired Bearing Angle 
+
+        if(n > 0):
+            n_hat = bearing_edge_pink_left  # bearing to left edge of obstacle
+        else:
+            n_hat = bearing_edge_pink_right # bearing to right edge of obstacle
+
+        p_hat = p*math.cos(n-n_hat)         # distance to edge of obstacle
+        u_psi = ((((math.pow(V,2)*k1)/(g*p_hat))*math.sin(n_hat))+(((V*k2)/g)*(n_hat-n_d)))
+        set_velocity_ugv(.3,0,0,0,0,-u_psi)
+        # V=.3;
+        # rho_tilde_min = 5
+        # B0 = 0.05
+        # epsilon = .1
+        # eta_d1 = math.radians(25)
+        # eta_d2 = direction * abs(eta_d1)
+        # u_psi = (abs(V*math.sin(bearing_pink*(3.14159/180)))/rho_tilde_min+B0)*satSgn((bearing_pink*(3.14159/180)-eta_d2)/epsilon)
+            
+
+def bearingangleavoidance_green():
+    while(detected == 2):
+        #########    Bearing Angle Avoidance with Range   #########################
+        dist = get_numbers_from_file()
+        p = float(dist[1])*.05               # Range to Obstacle
+        V = .3                              # Linear Velocity of UGV
+        g = 1                               # Gravity Constant
+        k1 = 1   
+        k2 = .03                               # gain constant
+        n = bearing_green                    # bearing to center of obstacle
+        n_d = direction * math.radians(15)  # Desired Bearing Angle 
+
+        if(n > 0):
+            n_hat = bearing_edge_green_left  # bearing to left edge of obstacle
+        else:
+            n_hat = bearing_edge_green_right # bearing to right edge of obstacle
+
+        p_hat = p*math.cos(n-n_hat)         # distance to edge of obstacle
+        u_psi = ((((math.pow(V,2)*k1)/(g*p_hat))*math.sin(n_hat))+(((V*k2)/g)*(n_hat-n_d)))
+        set_velocity_ugv(.3,0,0,0,0,-u_psi)
+        # V=.3;
+        # rho_tilde_min = 5
+        # B0 = 0.05
+        # epsilon = .1
+        # eta_d1 = math.radians(25)
+        # eta_d2 = direction * abs(eta_d1)
+        # u_psi = (abs(V*math.sin(bearing_green*(3.14159/180)))/rho_tilde_min+B0)*satSgn((bearing_green*(3.14159/180)-eta_d2)/epsilon)
+        
+
+
+
+    
+    
+def satSgn(u): 
+    if (u>-1 and u <1):
+        output = u;
+    else:
+        output = sign(u) 
+    return output
+    
+def sign(u): 
+    if (u>0):
+        output = 1
+    elif (u<0):
+        output = -1
+    elif (u==0):
+        output=0 
+    return output 
+        
+def turn_direction(angle_init, ugv_angle):
+   if(angle_init >= 0):
+      angle_back = angle_init-180
+   else:
+      angle_back = angle_init+180
+   if(angle_init >=0 and ugv_angle <= angle_init and ugv_angle >= angle_back):
+      turn_sign = 1
+   elif(angle_init >=0 and ((ugv_angle >= angle_init and ugv_angle <=180) or (ugv_angle <= angle_back))):
+      turn_sign = -1
+   elif(angle_init < 0 and ((ugv_angle <= angle_init and ugv_angle >=-180) or (ugv_angle >= angle_back))):
+      turn_sign = 1
+   elif(angle_init < 0 and ugv_angle > angle_init and ugv_angle < angle_back):
+      turn_sign = -1
+   return turn_sign 
+ 
+def angle_difference(uav_angle, ugv_angle):
+   if(uav_angle >=0 and ugv_angle >=0):
+      diff=abs(uav_angle - ugv_angle)
+   elif(uav_angle >=0 and ugv_angle <0):
+      diff = abs(360-uav_angle-abs(ugv_angle))
+   elif(uav_angle <0 and ugv_angle >=0):
+      diff = abs( abs(uav_angle) + ugv_angle)
+   elif(uav_angle <0 and ugv_angle < 0):
+      diff = abs(uav_angle - ugv_angle)
+   if(diff > 180):
+      diff = abs(360-diff)
+   return diff
+
+
+def goto_target(x,y):
+	D_yaw = 1   
+	Derivator_yaw = 0
+	error_yaw = 0;
+	Kd_yaw = 1
+	diff_x = abs(ugv_pose_x-x)
+	diff_y = abs(ugv_pose_y-y)
+	goal_x = x - ugv_pose_x
+	goal_y = y - ugv_pose_y
+	while (diff_x > .1 or diff_y>.1):
+		angle = rotate_target(goal_x,goal_y)
+		############# YAW PID   #####################
+		diff_yaw = angle_difference(ugv_yaw,angle)
+		sign_yaw = turn_direction(ugv_yaw, angle)
+		P_yaw = sign_yaw*diff_yaw*.05
+		error_yaw = diff_yaw
+		D_yaw = Kd_yaw * (error_yaw - Derivator_yaw)
+		PD_yaw = P_yaw + D_yaw
+		Derivator_yaw= error_yaw
+		Kd_yaw = D_yaw
+		set_velocity_ugv(.3,0,0,0,0,PD_yaw)
+		diff_x = abs(ugv_pose_x-x)
+		diff_y = abs(ugv_pose_y-y)
+		goal_x = x - ugv_pose_x
+		goal_y = y - ugv_pose_y
+		if(detected != 0):
+			return 0
+	set_velocity_ugv(0,0,0,0,0,0)
+	return 1
+
+def rotate_target(x,y):
+   if(x<0 and y >0):
+      angle = math.atan2(x, y) + math.pi/2
+   if(x>0 and y>0):
+      angle = math.atan2(x, y) + math.pi/2
+   if(x<0 and y<0):
+      angle = math.atan2(x, y)+ math.pi/2
+   if(x>0 and y<0):      
+      angle =  math.atan2(x, y) - (3*math.pi/2)
+   if(x==0 and y>0):
+      angle = math.pi/2
+   if(x==0 and y<0):
+      angle = -math.pi/2
+   if(y==0 and x<0):
+      angle = 0
+   if(y==0 and x>0):
+      angle = math.pi
+   angle=angle*180/math.pi
+   return angle
+
+def maincontroller(x,y):
+    send()
+    global direction
+    sentcheck = 1
+    directions = []
+    while(1):
+		directions = get_directions_from_file()
+		sentcheck = int(directions[0])
+		direction1 = int(directions[1])
+		direction2 = int(directions[2])
+		direction3 = int(directions[3])
+		if (sentcheck != 1):
+			break
+        # f = open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/src/communication.txt', 'r')
+        # f.seek(0)
+        # sentcheck = f.read(1)
+        # while(sentcheck == ""):
+        #   f.seek(0)
+  #             sentcheck = f.read(1)
+  #         sentcheck = int(sentcheck)
+
+  #         f.seek(1)
+  #         direction1 = f.read(1)
+  #         while(direction1 == ""):
+  #             f.seek(1)
+  #             direction1 = f.read(1)
+        # direction1 = int(direction1)
+
+        # f.seek(2)
+        # direction2 = f.read(1)
+        # while(direction2 == ""):
+        #   f.seek(2)
+        #   direction2 = f.read(1)
+        # direction2 = int(direction2)
+
+        # f.seek(3)
+        # direction3 = f.read(1)
+        # while(direction3 == ""):
+        #   f.seek(3)
+        #   direction3 = f.read(1)
+        # direction3 = int(direction3)
+
+        
+        #f.close()
+    while(1):
+		if(detected == 0):
+			finished = goto_target(x,y)
+			if(finished == 1):
+				break
+		if(detected == 1):
+			direction = direction1
+			if(direction == 0):
+				direction = -1
+			bearingangleavoidance_blue()
+		if(detected == 2):
+			direction = direction2
+			if(direction == 0):
+				direction = -1
+			bearingangleavoidance_green()
+		if(detected == 3):
+			direction=direction3
+			if(direction == 0):
+				direction = -1
+			bearingangleavoidance_pink() 
+
+
+def send():
+    f = open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/src/communication.txt', 'w')
+    sent = 1
+    obstacle1 = 0
+    obstacle2 = 0
+    obstacle3 = 0
+    f.write(str(sent))
+    f.write(" ")
+    f.write(str(obstacle1))
+    f.write(" ")
+    f.write(str(obstacle2))
+    f.write(" ")
+    f.write(str(obstacle3))
+    f.close()
+
+def get_numbers_from_file():
+    with open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/src/distances.txt') as f:
+        while(1):
+            f.seek(0)
+            linein = f.readline()
+            if (linein == ''):
+                continue
+            linein = linein.split()
+            break
+    f.close()   
+    return linein
+
+def get_directions_from_file():
+    with open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/src/communication.txt') as f:
+        while(1):
+            f.seek(0)
+            linein = f.readline()
+            if (linein == ''):
+                continue
+            linein = linein.split()
+            break
+    f.close()   
+    return linein
+    
+
+if __name__ == '__main__':
+	#ugv_image_pink()
+	#ugv_image_blue()
+	#ugv_image_green()
+	#ugvnav()
+	try:
+		set_velocity_ugv(.5, 0, 0, 0, 0, .5)
+		#time.sleep(2)
+		#delete = rospy.ServiceProxy('gazebo/delete_model', DeleteModel)
+		#spawn = rospy.ServiceProxy('gazebo/spawn_sdf_model', SpawnModel)
+		#f = open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/urdf/blue_cylinder.urdf','r')
+		#sdff_blue = f.read()
+		#f = open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/urdf/green_cylinder.urdf','r')
+		#sdff_green = f.read()
+		#f = open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/urdf/purple_cylinder.urdf','r')
+		#sdff_purple = f.read()
+		#f = open('/home/jonlwowski/catkin_ws/src/cooperative_obstacle_avoidance/urdf/orange_box.urdf','r')
+		#sdff_orange = f.read()
+		#pose = Pose()
+		############# Delete All ##############################
+		#delete("unit_cylinder_1_1")
+		#delete("unit_cylinder_2_0")
+		#delete("unit_cylinder_3")
+		#delete("unit_box_1_0")
+		#delete("unit_cylinder_4")
+		#delete("unit_cylinder_5")
+		#delete("unit_cylinder_6")
+		#delete("unit_box_2")
+		#delete("unit_cylinder_7")
+		#delete("unit_cylinder_8")
+		#delete("unit_cylinder_9")
+		#delete("unit_box_3")
+		#delete("unit_cylinder_1")
+		#delete("unit_cylinder_2")
+		#delete("unit_cylinder_1_0")
+		#delete("unit_box_1")
+		#for num in range(1,4):
+			############# Spawn Set 1 ################################  
+			#pose.position.x = 3
+			#pose.position.y = random.uniform(-1,1)
+			#pose.position.z = .5
+			#spawn("blue_cylinder_1", sdff_blue, "urdf", pose, "world")
+			#pose.position.x = 5
+			#pose.position.y = random.uniform(-1,1)
+			#pose.position.z = .5
+			#spawn("green_cylinder_1", sdff_green, "urdf", pose, "world")
+			#pose.position.x = 7
+			#pose.position.y = random.uniform(-1,1)
+			#pose.position.z = .5
+			#spawn("purple_cylinder_1", sdff_purple, "urdf", pose, "world")
+			#pose.position.x = 10
+			#pose.position.y = 0
+			#pose.position.z = 0
+			#spawn("orange_box_1", sdff_orange, "urdf", pose, "world")
+			#maincontroller(11,0)
+			  
+			#delete("unit_box_1")
+			#delete("blue_cylinder_1")
+			#delete("green_cylinder_1")
+			#delete("purple_cylinder_1")
+			#delete("orange_box_1")
+
+			############## Spawn Set 2 ################################  
+			#pose.position.x = random.uniform(7, 9)
+			#pose.position.y = -4
+			#pose.position.z = .5
+			#spawn("blue_cylinder_2", sdff_blue, "urdf", pose, "world")
+			#pose.position.x = random.uniform(7, 9)
+			#pose.position.y = -6
+			#pose.position.z = .5
+			#spawn("green_cylinder_2", sdff_green, "urdf", pose, "world")
+			#pose.position.x = random.uniform(7, 9)
+			#pose.position.y = -8
+			#pose.position.z = .5
+			#spawn("purple_cylinder_2", sdff_purple, "urdf", pose, "world")
+			#pose.position.x = 8
+			#pose.position.y = -11
+			#pose.position.z = .5
+			#spawn("orange_box_2", sdff_orange, "urdf", pose, "world")
+
+			#maincontroller(11,-10)
+
+			#delete("blue_cylinder_2")
+			#delete("green_cylinder_2")
+			#delete("purple_cylinder_2")
+			#delete("orange_box_2")
+
+			############## Spawn Set 3 ################################  
+			#pose.position.x = 4
+			#pose.position.y = random.uniform(-10,-8)
+			#pose.position.z = .5
+			#spawn("blue_cylinder_3", sdff_blue, "urdf", pose, "world")
+			#pose.position.x = 2
+			#pose.position.y = random.uniform(-10,-8)
+			#pose.position.z = .5
+			#spawn("green_cylinder_3", sdff_green, "urdf", pose, "world")
+			#pose.position.x = 0
+			#pose.position.y = random.uniform(-10,-8)
+			#pose.position.z = .5
+			#spawn("purple_cylinder_3", sdff_purple, "urdf", pose, "world")
+			#pose.position.x = -3
+			#pose.position.y = -9
+			#pose.position.z = 0
+			#spawn("orange_box_3", sdff_orange, "urdf", pose, "world")
+
+			#maincontroller(-1,-10)
+
+			#delete("blue_cylinder_3")
+			#delete("green_cylinder_3")
+			#delete("purple_cylinder_3")
+			#delete("orange_box_3")
+
+			############## Spawn Set 4 ################################  
+			#pose.position.x = random.uniform(-2,0)
+			#pose.position.y = -5
+			#pose.position.z = .5
+			#spawn("blue_cylinder_4", sdff_blue, "urdf", pose, "world")
+			#pose.position.x = random.uniform(-2,0)
+			#pose.position.y = -3
+			#pose.position.z = .5
+			#spawn("green_cylinder_4", sdff_green, "urdf", pose, "world")
+			#pose.position.x = random.uniform(-2,0)
+			#pose.position.y = -1
+			#pose.position.z = .5
+			#spawn("purple_cylinder_4", sdff_purple, "urdf", pose, "world")
+			#pose.position.x = -3
+			#pose.position.y = 0
+			#pose.position.z = .5
+			#spawn("orange_box_4", sdff_orange, "urdf", pose, "world")
+
+			#maincontroller(-1,0)
+
+			#delete("blue_cylinder_4")
+			#delete("green_cylinder_4")
+			#delete("purple_cylinder_4")
+			#delete("orange_box_4")
+	except rospy.ROSInterruptException: pass
