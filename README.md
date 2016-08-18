@@ -4,11 +4,11 @@ https://www.youtube.com/watch?v=xP0Fy4E-h24&list=PLxsCGeuMuxK2tO8LPZJ70zL1-MFsBP
 
 To Cite this work refer to.
 ```
-@InProceedings{ sturm12iros,
-	author = {J. Sturm and N. Engelhard and F. Endres and W. Burgard and D. Cremers},
-	title = "A Benchmark for the Evaluation of RGB-D SLAM Systems",
-	booktitle = "Proc. of the International Conference on Intelligent Robot Systems (IROS)",
-	year = "2012",
+@InProceedings{ lwowskiDSCC,
+	author = {J. Lwowski and L. Sun and D. Pack},
+	title = "HETEROGENEOUS BI-DIRECTIONAL COOPERATIVE UNMANNED VEHICLES FOR OBSTACLE AVOIDANCE",
+	booktitle = "Proceedings of the ASME 2016 Dynamic Systems and Control Conference",
+	year = "2016",
 	month= "Oct.",
 }
 ```
